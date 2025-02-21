@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Multiply Game</title>
+	<style>
+		body {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			background-color: #000;
+			color: #fff;
+			font-family: Arial, sans-serif;
+		}
+
+		canvas {
+			background-color: #222;
+		}
+
+		#answerInput {
+			margin-top: 10px;
+			padding: 5px;
+			font-size: 18px;
+			width: 200px;
+			text-align: center;
+		}
+	</style>
+	<script>
+		const canvas = document.getElementById('gameCanvas');
+		const ctx = canvas.getContext('2d');
+		const answerInput = document.getElementById('answerInput');
+
+		let problems = [];
+		let score = 0;
+		let skips = 3;
+		let gameOver = false;
+		let laserActive = false;
+		let laserTarget = null;
+		let explosions = [];
+		let misfireFrames = 0;
+		let spawnCounter = 0;
+		let spawnInterval = 300;
+		const maxProblems = 5;
+		const baseSpeed = 0.3; // Speed set to 0.3 pixels per frame
+		let level1 = 0.5; // Difficulty level for first number
+		let level2 = 0.5; // Difficulty level for second number
+		const levelIncrement = 0.01; // Base increment per score point
+
+		function generateProblem(score) {
+			// Increment levels slowly based on score
+			level1 += levelIncrement * 1.2; // 20% faster increment for level1
+			level2 += levelIncrement;
+
+			// Cap levels to prevent overly large numbers
+			const maxLevel = 100;
+			level1 = Math.min(level1, maxLevel);
+			level2 = Math.min(level2, maxLevel);
+
+			// Calculate number ranges based on levels
+			const maxNum1 = Math.floor(10 + level1 * 10);
+			const maxNum2 = Math.floor(10 + level2 * 10);
+
+			let num1 = Math.floor(Math.random() * maxNum1) + 1;
+			let num2 = Math.floor(Math.random() * maxNum2) + 1;
+			let expression = `${num1}x${num2}`;
+			let product = num1 * num2;
+			let width = 100 + Math.floor(level1 + level2) * 10;
+			let height = 30;
+
+			// Occasionally include 3-number multiplication at higher levels
+			if (Math.random() < 0.1 && level1 > 10 && level2 > 10) {
+				let num3 = Math.floor(Math.random() * 10) + 1;
+				expression = `${num1}x${num2}x${num3}`;
+				product = num1 * num2 * num3;
+				width += 50;
+			}
+
+			return { expression, product, width, height };
+		}
+
+		function update() {
+			if (gameOver) return;
+
+			// Update problem positions
+			problems.forEach(p => {
+				p.y += baseSpeed;
+				if (p.y >= canvas.height) {
+					gameOver = true;
+				}
+			});
+
+			// Spawn new problems
+			spawnCounter++;
+			if (spawnCounter >= spawnInterval && problems.length < maxProblems) {
+				spawnCounter = 0;
+				let newProblem = generateProblem(score);
+				newProblem.x = Math.random() * (canvas.width - newProblem.width);
+				newProblem.y = 0;
+				newProblem.speed = baseSpeed;
+				problems.push(newProblem);
+			}
+
+			// Update explosions
+			explosions = explosions.filter(exp => exp.age <= 30);
+			explosions.forEach(exp => exp.age++);
+		}
+
+		function draw() {
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+			// Draw problems
+			problems.forEach(p => {
+				ctx.fillStyle = '#444';
+				ctx.fillRect(p.x, p.y, p.width, p.height);
+				ctx.fillStyle = '#fff';
+				ctx.font = '24px Arial';
+				ctx.textAlign = 'center';
+				ctx.textBaseline = 'middle';
+				ctx.fillText(p.expression, p.x + p.width / 2, p.y + p.height / 2);
+			});
+
+			// Draw cannon
+			ctx.fillStyle = '#f00';
+			const cannonX = canvas.width / 2; // Assuming cannon is centered
+			const cannonY = canvas.height - 20;
+			ctx.beginPath();
+			ctx.moveTo(cannonX - 10, cannonY);
+			ctx.lineTo(cannonX + 10, cannonY);
+			ctx.lineTo(cannonX, cannonY - 20);
+			ctx.closePath();
+			ctx.fill();
+
+			// Draw laser
+			if (laserActive) {
+				ctx.strokeStyle = 'white';
+				ctx.lineWidth = 5;
+				ctx.beginPath();
+				ctx.moveTo(cannonX, cannonY - 20);
+				ctx.lineTo(laserTarget.x, laserTarget.y);
+				ctx.stroke();
+
+				// Screen flash
+				ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
+			}
+
+			// Draw explosions
+			explosions.forEach(exp => {
+				let radius = exp.age * 2;
+				let alpha = 1 - exp.age / 30;
+				ctx.beginPath();
+				ctx.arc(exp.x, exp.y, radius, 0, Math.PI * 2);
+				ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+				ctx.fill();
+			});
+
+			// Draw score and skips
+			ctx.fillStyle = '#fff';
+			ctx.font = '20px Arial';
+			ctx.textAlign = 'left';
+			ctx.fillText(`Score: ${score}`, 10, 30);
+			ctx.fillText(`Skips: ${skips}`, 10, 60);
+
+			// Misfire flash
+			if (misfireFrames > 0) {
+				ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
+				misfireFrames--;
+			}
+
+			// Game over screen
+			if (gameOver) {
+				ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
+				ctx.fillStyle = '#fff';
+				ctx.font = '40px Arial';
+				ctx.textAlign = 'center';
+				ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 50);
+				ctx.font = '30px Arial';
+				ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2);
+				ctx.fillText('Click to Try Again', canvas.width / 2, canvas.height / 2 + 50);
+			}
+		}
+
+		function gameLoop() {
+			update();
+			draw();
+			requestAnimationFrame(gameLoop);
+		}
+
+		function shootLaser(problem) {
+			laserActive = true;
+			laserTarget = { x: problem.x + problem.width / 2, y: problem.y + problem.height / 2 };
+			setTimeout(() => {
+				laserActive = false;
+				createExplosion(laserTarget.x, laserTarget.y);
+				problems = problems.filter(p => p !== problem);
+				score += problem.product;
+			}, 100); // Laser duration
+		}
+
+		function createExplosion(x, y) {
+			explosions.push({ x, y, age: 0 });
+		}
+
+		function misfireAnimation() {
+			misfireFrames = 5; // Show red flash for 5 frames
+		}
+
+		function skipProblem() {
+			if (skips > 0 && problems.length > 0) {
+				let lowestProblem = problems.reduce((a, b) => a.y > b.y ? a : b);
+				problems = problems.filter(p => p !== lowestProblem);
+				skips--;
+			}
+		}
+
+		// Handle answer input
+		answerInput.addEventListener('keypress', function (e) {
+			if (e.key === 'Enter') {
+				let answer = parseInt(this.value);
+				let problem = problems.find(p => p.product === answer);
+				if (problem) {
+					shootLaser(problem);
+				} else {
+					misfireAnimation();
+				}
+				this.value = '';
+			}
+		});
+
+		// Handle skips
+		answerInput.addEventListener('keydown', function (e) {
+			if (e.key === ' ') {
+				e.preventDefault();
+				skipProblem();
+			}
+		});
+
+		// Handle game restart
+		canvas.addEventListener('click', function () {
+			if (gameOver) {
+				problems = [];
+				score = 0;
+				skips = 3;
+				gameOver = false;
+				level1 = 1;
+				level2 = 1;
+				answerInput.focus();
+			}
+		});
+
+		// Initialize
+		answerInput.focus();
+		gameLoop();
+	</script>
+</head>
+
+<body>
+	<canvas id="gameCanvas" width="800" height="600"></canvas>
+	<input type="text" id="answerInput" placeholder="Type your answer">
+</body>
+
+</html>

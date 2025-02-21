@@ -7,7 +7,10 @@
 		body {
 			display: flex;
 			flex-direction: column;
-			align-items: center;
+			justify-content: center; /* Vertically center the flex items */
+			align-items: center;     /* Horizontally center the flex items */
+			height: 100vh;           /* Make body take up full viewport height */
+			margin: 0;               /* Remove default margin to avoid offset */
 			background-color: #000;
 			color: #fff;
 			font-family: Arial, sans-serif;
@@ -24,17 +27,88 @@
 			width: 200px;
 			text-align: center;
 		}
+
+		#mute-btn{
+			position: absolute;
+			top: 10px;
+			right: 10px;
+			font-size: 40px;
+			background-color: transparent;
+			border: none;
+			color: white;
+			cursor: pointer;
+		}
 	</style>
 </head>
 
 <body>
 	<canvas id="gameCanvas" width="800" height="600"></canvas>
 	<input type="text" id="answerInput" placeholder="Type your answer">
+	<button id="mute-btn">🔊</button>
+
 	<script>
 		const canvas = document.getElementById('gameCanvas');
 		const ctx = canvas.getContext('2d');
 		const answerInput = document.getElementById('answerInput');
+		const muteBtn = document.getElementById('mute-btn');
 
+		let audioEnabled = true;
+
+		muteBtn.addEventListener('click', function(){
+			audioEnabled = !audioEnabled;
+			this.innerText = audioEnabled ? '🔊' : '🔇';
+		});
+
+		// Initialize AudioContext for sound
+		const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+		// Generic function to play a beep
+		function playBeep(frequency, duration) {
+			if(!audioEnabled) return;
+			const oscillator = audioCtx.createOscillator();
+			const gainNode = audioCtx.createGain();
+			oscillator.type = 'sine';
+			oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+			
+			gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+			
+			// Connect the oscillator to the gain node, then to the destination
+			oscillator.connect(gainNode);
+			gainNode.connect(audioCtx.destination);
+			
+			oscillator.start();
+			oscillator.stop(audioCtx.currentTime + duration);
+		}
+
+		// Sound for correct answer
+		function playCorrectSound() {
+			playBeep(1000, 0.1); // High-pitched, short beep
+		}
+
+		// Sound for incorrect answer
+		function playIncorrectSound() {
+			playBeep(500, 0.2); // Lower-pitched, longer beep
+		}
+
+		// Sound for game over
+		function playGameOverSound() {
+			if(!audioEnabled) return;
+			const now = audioCtx.currentTime;
+			const freqs = [800, 600, 400]; // Descending frequencies
+			freqs.forEach((freq, index) => {
+				const oscillator = audioCtx.createOscillator();
+				const gainNode = audioCtx.createGain();
+				gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+				oscillator.type = 'sine';
+				oscillator.frequency.setValueAtTime(freq, now + index * 0.2);
+				oscillator.connect(gainNode);
+				gainNode.connect(audioCtx.destination);
+				oscillator.start(now + index * 0.2);
+				oscillator.stop(now + index * 0.2 + 0.1);
+			});
+		}
+
+		// Game variables
 		let problems = [];
 		let score = 0;
 		let skips = 3;
@@ -46,55 +120,43 @@
 		let spawnCounter = 0;
 		let spawnInterval = 300;
 		const maxProblems = 5;
-		const baseSpeed = 0.3; // Speed set to 0.3 pixels per frame
-		let level1 = 0.5; // Difficulty level for first number
-		let level2 = 0.5; // Difficulty level for second number
-		const levelIncrement = 0.01; // Base increment per score point
+		const baseSpeed = 0.3;
+		let level1 = 0.5;
+		let level2 = 0.5;
+		const levelIncrement = 0.01;
+		let gameOverSoundPlayed = false; // Flag to play game over sound once
 
 		function generateProblem(score) {
-			// Increment levels slowly based on score
-			level1 += levelIncrement * 1.2; // 20% faster increment for level1
+			level1 += levelIncrement * 1.2;
 			level2 += levelIncrement;
-
-			// Cap levels to prevent overly large numbers
 			const maxLevel = 100;
 			level1 = Math.min(level1, maxLevel);
 			level2 = Math.min(level2, maxLevel);
-
-			// Calculate number ranges based on levels
 			const maxNum1 = Math.floor(10 + level1 * 10);
 			const maxNum2 = Math.floor(10 + level2 * 10);
-
 			let num1 = Math.floor(Math.random() * maxNum1) + 1;
 			let num2 = Math.floor(Math.random() * maxNum2) + 1;
 			let expression = `${num1}x${num2}`;
 			let product = num1 * num2;
 			let width = 100 + Math.floor(level1 + level2) * 10;
 			let height = 30;
-
-			// Occasionally include 3-number multiplication at higher levels
 			if (Math.random() < 0.1 && level1 > 10 && level2 > 10) {
 				let num3 = Math.floor(Math.random() * 10) + 1;
 				expression = `${num1}x${num2}x${num3}`;
 				product = num1 * num2 * num3;
 				width += 50;
 			}
-
 			return { expression, product, width, height };
 		}
 
 		function update() {
 			if (gameOver) return;
-
-			// Update problem positions
 			problems.forEach(p => {
 				p.y += baseSpeed;
 				if (p.y >= canvas.height) {
 					gameOver = true;
 				}
 			});
-
-			// Spawn new problems
 			spawnCounter++;
 			if (spawnCounter >= spawnInterval && problems.length < maxProblems) {
 				spawnCounter = 0;
@@ -104,16 +166,12 @@
 				newProblem.speed = baseSpeed;
 				problems.push(newProblem);
 			}
-
-			// Update explosions
 			explosions = explosions.filter(exp => exp.age <= 30);
 			explosions.forEach(exp => exp.age++);
 		}
 
 		function draw() {
 			ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-			// Draw problems
 			problems.forEach(p => {
 				ctx.fillStyle = '#444';
 				ctx.fillRect(p.x, p.y, p.width, p.height);
@@ -123,10 +181,8 @@
 				ctx.textBaseline = 'middle';
 				ctx.fillText(p.expression, p.x + p.width / 2, p.y + p.height / 2);
 			});
-
-			// Draw cannon
 			ctx.fillStyle = '#f00';
-			const cannonX = canvas.width / 2; // Assuming cannon is centered
+			const cannonX = canvas.width / 2;
 			const cannonY = canvas.height - 20;
 			ctx.beginPath();
 			ctx.moveTo(cannonX - 10, cannonY);
@@ -134,8 +190,6 @@
 			ctx.lineTo(cannonX, cannonY - 20);
 			ctx.closePath();
 			ctx.fill();
-
-			// Draw laser
 			if (laserActive) {
 				ctx.strokeStyle = 'white';
 				ctx.lineWidth = 5;
@@ -143,13 +197,9 @@
 				ctx.moveTo(cannonX, cannonY - 20);
 				ctx.lineTo(laserTarget.x, laserTarget.y);
 				ctx.stroke();
-
-				// Screen flash
 				ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
 				ctx.fillRect(0, 0, canvas.width, canvas.height);
 			}
-
-			// Draw explosions
 			explosions.forEach(exp => {
 				let radius = exp.age * 2;
 				let alpha = 1 - exp.age / 30;
@@ -158,23 +208,21 @@
 				ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
 				ctx.fill();
 			});
-
-			// Draw score and skips
 			ctx.fillStyle = '#fff';
 			ctx.font = '20px Arial';
 			ctx.textAlign = 'left';
 			ctx.fillText(`Score: ${score}`, 10, 30);
 			ctx.fillText(`Skips: ${skips}`, 10, 60);
-
-			// Misfire flash
 			if (misfireFrames > 0) {
 				ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
 				ctx.fillRect(0, 0, canvas.width, canvas.height);
 				misfireFrames--;
 			}
-
-			// Game over screen
 			if (gameOver) {
+				if (!gameOverSoundPlayed) {
+					playGameOverSound();
+					gameOverSoundPlayed = true;
+				}
 				ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
 				ctx.fillRect(0, 0, canvas.width, canvas.height);
 				ctx.fillStyle = '#fff';
@@ -201,7 +249,7 @@
 				createExplosion(laserTarget.x, laserTarget.y);
 				problems = problems.filter(p => p !== problem);
 				score += problem.product;
-			}, 100); // Laser duration
+			}, 100);
 		}
 
 		function createExplosion(x, y) {
@@ -209,7 +257,7 @@
 		}
 
 		function misfireAnimation() {
-			misfireFrames = 5; // Show red flash for 5 frames
+			misfireFrames = 5;
 		}
 
 		function skipProblem() {
@@ -220,14 +268,16 @@
 			}
 		}
 
-		// Handle answer input
+		// Handle answer input with sounds
 		answerInput.addEventListener('keypress', function (e) {
 			if (e.key === 'Enter') {
 				let answer = parseInt(this.value);
 				let problem = problems.find(p => p.product === answer);
 				if (problem) {
+					playCorrectSound(); // Play sound for correct answer
 					shootLaser(problem);
 				} else {
+					playIncorrectSound(); // Play sound for incorrect answer
 					misfireAnimation();
 				}
 				this.value = '';
@@ -251,6 +301,7 @@
 				gameOver = false;
 				level1 = 1;
 				level2 = 1;
+				gameOverSoundPlayed = false; // Reset sound flag
 				answerInput.focus();
 			}
 		});

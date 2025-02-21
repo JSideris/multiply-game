@@ -102,7 +102,7 @@
             <button class="enter">Enter</button>
         </div>
         <div id="side-buttons">
-            <button id="skip-btn">Skip</button>
+            <button id="bomb-btn">Bomb</button>
             <button id="backspace-btn">Backspace</button>
         </div>
     </div>
@@ -112,7 +112,7 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const muteBtn = document.getElementById('mute-btn');
-        const skipBtn = document.getElementById('skip-btn');
+        const bombBtn = document.getElementById('bomb-btn');
 
         let audioEnabled = true;
         muteBtn.addEventListener('click', function() {
@@ -120,19 +120,19 @@
             this.innerText = audioEnabled ? '🔊' : '🔇';
         });
 
-        skipBtn.addEventListener('click', skipProblem);
+        bombBtn.addEventListener('click', bombProblem);
 
         // Initialize AudioContext for sound
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
         // Generic function to play a beep
-        function playBeep(frequency, duration) {
+        function playBeep(frequency, duration, volume = 0.3) {
             if (!audioEnabled) return;
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
             oscillator.type = 'sine';
             oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
-            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             oscillator.start();
@@ -167,10 +167,25 @@
             });
         }
 
+        // Sound for bomb
+        function playBombSound() {
+            if (!audioEnabled) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(200, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.5);
+            gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5);
+        }
+
         // Game variables
         let problems = [];
         let score = 0;
-        let skips = 3;
+        let bombs = 3;
         let gameOver = false;
         let laserActive = false;
         let laserTarget = null;
@@ -262,7 +277,7 @@
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
             explosions.forEach(exp => {
-                let radius = exp.age * 2;
+                let radius = exp.age * 2 * exp.sizeFactor;
                 let alpha = 1 - exp.age / 30;
                 ctx.beginPath();
                 ctx.arc(exp.x, exp.y, radius, 0, Math.PI * 2);
@@ -273,7 +288,7 @@
             ctx.font = '20px Arial';
             ctx.textAlign = 'left';
             ctx.fillText(`Score: ${score}`, 10, 30);
-            ctx.fillText(`Skips: ${skips}`, 10, 60);
+            ctx.fillText(`Bombs: ${bombs}`, 10, 60);
             if (misfireFrames > 0) {
                 ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -319,19 +334,22 @@
             }, 100);
         }
 
-        function createExplosion(x, y) {
-            explosions.push({ x, y, age: 0 });
+        function createExplosion(x, y, sizeFactor = 1) {
+            explosions.push({ x, y, age: 0, sizeFactor });
         }
 
         function misfireAnimation() {
             misfireFrames = 5;
         }
 
-        function skipProblem() {
-            if (skips > 0 && problems.length > 0) {
-                let lowestProblem = problems.reduce((a, b) => a.y > b.y ? a : b);
-                problems = problems.filter(p => p !== lowestProblem);
-                skips--;
+        function bombProblem() {
+            if (bombs > 0) {
+                playBombSound();
+                problems.forEach(p => {
+                    createExplosion(p.x + p.width / 2, p.y + p.height / 2, 2);
+                });
+                problems = [];
+                bombs--;
                 currentInput = '';
             }
         }
@@ -357,6 +375,7 @@
                     submitAnswer();
                 } else {
                     currentInput += this.textContent;
+					playBeep(140, 0.05, 0.05);
                 }
             });
         });
@@ -377,7 +396,7 @@
                 submitAnswer();
             } else if (e.key === ' ') {
                 e.preventDefault();
-                skipProblem();
+                bombProblem();
             }
         });
 
@@ -386,7 +405,7 @@
             if (gameOver) {
                 problems = [];
                 score = 0;
-                skips = 3;
+                bombs = 3;
                 gameOver = false;
                 level1 = 0.5;
                 level2 = 0.5;

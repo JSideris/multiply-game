@@ -25,6 +25,11 @@
 			text-align: center;
 		}
 	</style>
+</head>
+
+<body>
+	<canvas id="gameCanvas" width="800" height="600"></canvas>
+	<input type="text" id="answerInput" placeholder="Type your answer">
 	<script>
 		const canvas = document.getElementById('gameCanvas');
 		const ctx = canvas.getContext('2d');
@@ -254,11 +259,6 @@
 		answerInput.focus();
 		gameLoop();
 	</script>
-</head>
-
-<body>
-	<canvas id="gameCanvas" width="800" height="600"></canvas>
-	<input type="text" id="answerInput" placeholder="Type your answer">
 </body>
 
 </html>
